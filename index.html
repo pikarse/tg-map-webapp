@@ -177,6 +177,54 @@
             color: #222;
             margin: 10px 0 0 0;
         }
+        .comment {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            margin-top: 8px;
+            max-width: 260px;
+            word-break: break-word;
+            white-space: pre-line;
+            background: none;
+        }
+        .comment-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+        .user-icon {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            background: #1976d2;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .user-icon svg {
+            width: 18px; height: 18px; fill: #fff;
+        }
+        .user-nick {
+            font-weight: 500;
+            color: #1976d2;
+            font-size: 15px;
+        }
+        .comment-text {
+            color: #222;
+            font-size: 15px;
+            margin-bottom: 2px;
+        }
+        .comment-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        .comment-stars {
+            font-size: 18px;
+        }
+        .comment-time {
+            color: #888;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -301,19 +349,27 @@
             else if (minutesAgo < 60) timeAgo = `${minutesAgo} мин назад`;
             else timeAgo = `${Math.floor(minutesAgo/60)} ч ${minutesAgo%60} мин назад`;
             let commentsHtml = '';
-            if (mark.comments && mark.comments.length > 0) {
-                commentsHtml = '<hr style="margin:8px 0 4px 0;">';
-                commentsHtml += '<b>Комментарии:</b><br>' + mark.comments.map(c =>
-                    `<div style='margin-bottom:8px;'>
-                        <div style='color:#222;'>${c.text}</div>
-                        <div><span>${renderStars(c.rating)}</span><span style='color:#888;font-size:12px;margin-left:8px;'>${formatTime(new Date(c.timestamp))}</span></div>
+            const allComments = [{
+                text: mark.comment,
+                rating: mark.rating,
+                timestamp: mark.timestamp
+            }].concat(mark.comments || []);
+            if (allComments.length > 0) {
+                commentsHtml = '<div style="margin-top:10px;"><b>Комментарии:</b>' + allComments.map((c, i) =>
+                    `<div class='comment'>
+                        <div class='comment-header'>
+                            <span class='user-icon'><svg viewBox='0 0 24 24'><circle cx='12' cy='8' r='4'/><path d='M12 14c-4 0-6 2-6 4v1h12v-1c0-2-2-4-6-4z'/></svg></span>
+                            <span class='user-nick'>Пользователь</span>
+                        </div>
+                        <div class='comment-text'>${c.text}</div>
+                        <div class='comment-meta'>
+                            <span class='comment-stars'>${renderStars(c.rating)}</span>
+                            <span class='comment-time'>${formatTime(new Date(c.timestamp))}</span>
+                        </div>
                     </div>`
-                ).join('');
+                ).join('') + '</div>';
             }
             const popupContent =
-                `<b>Комментарий:</b> ${mark.comment}<br>` +
-                `<b>Оценка:</b> ${renderStars(mark.rating)}<br>` +
-                `<small>Поставлено: ${formatTime(new Date(mark.timestamp))} (${timeAgo})</small>` +
                 commentsHtml +
                 `<div style='margin-top:8px;text-align:right;'><button onclick='window.openCommentForm(${idx});return false;' style='background:#1976d2;color:#fff;border:none;border-radius:7px;padding:4px 12px;font-size:14px;cursor:pointer;'>Добавить комментарий</button></div>`;
             marker.bindPopup(popupContent, {maxWidth: 320});
