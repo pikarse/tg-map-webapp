@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>Карта города (OSM)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         html, body, #map {
@@ -12,22 +11,215 @@
             height: 100vh;
             margin: 0;
             padding: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
         }
         #map { min-height: 400px; }
+        /* Glassmorphism modal */
+        .modal-bg {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(30,40,60,0.18);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: fadeInBg 0.2s;
+        }
+        @keyframes fadeInBg {
+            from { background: rgba(30,40,60,0); }
+            to { background: rgba(30,40,60,0.18); }
+        }
+        .modal, .alert-modal {
+            background: rgba(255,255,255,0.82);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+            padding: 32px 24px 24px 24px;
+            min-width: 320px;
+            max-width: 95vw;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            animation: fadeInModal 0.25s;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            backdrop-filter: blur(12px);
+            position: relative;
+        }
+        @media (max-width: 500px) {
+            .modal, .alert-modal { min-width: 0; width: 98vw; padding: 18px 4vw 18px 4vw; }
+        }
+        @keyframes fadeInModal {
+            from { transform: translateY(40px) scale(0.98); opacity: 0; }
+            to { transform: none; opacity: 1; }
+        }
+        .modal h2, .alert-modal h2 {
+            margin: 0 0 2px 0;
+            font-size: 1.25em;
+            font-weight: 700;
+            color: #222;
+            text-align: center;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .modal label {
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: #444;
+            font-size: 15px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .modal textarea {
+            width: 98%;
+            min-height: 70px;
+            border-radius: 10px;
+            border: 1.5px solid #e0e0e0;
+            padding: 10px 12px;
+            font-size: 16px;
+            resize: vertical;
+            transition: border 0.2s;
+            outline: none;
+            margin-left: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            box-sizing: border-box;
+            display: block;
+            background: rgba(255,255,255,0.95);
+        }
+        .modal textarea:focus {
+            border: 1.5px solid #1976d2;
+            background: #f4f8ff;
+        }
+        .modal .stars {
+            display: flex;
+            gap: 8px;
+            font-size: 34px;
+            cursor: pointer;
+            justify-content: flex-start;
+            margin-left: 2px;
+        }
+        .modal .stars .star {
+            color: #ccc;
+            transition: color 0.2s, transform 0.15s;
+            user-select: none;
+            position: relative;
+        }
+        .modal .stars .star.selected,
+        .modal .stars .star.hovered {
+            color: #FFD600;
+            transform: scale(1.18);
+        }
+        .modal .stars .star .star-tooltip {
+            display: none;
+            position: absolute;
+            bottom: 120%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #222;
+            color: #fff;
+            font-size: 13px;
+            padding: 3px 10px;
+            border-radius: 7px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0.92;
+        }
+        .modal .stars .star:hover .star-tooltip {
+            display: block;
+        }
+        .modal .modal-actions, .alert-modal .alert-actions {
+            display: flex;
+            gap: 14px;
+            justify-content: flex-end;
+            margin-top: 6px;
+        }
+        .modal button, .alert-modal button {
+            border: none;
+            border-radius: 9px;
+            padding: 10px 22px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #f0f0f0;
+            transition: background 0.2s, color 0.2s;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .modal button.save, .alert-modal button.save {
+            background: #1976d2;
+            color: #fff;
+            font-weight: 600;
+        }
+        .modal button.save:disabled {
+            background: #bdbdbd;
+            color: #fff;
+            cursor: not-allowed;
+        }
+        .modal button.cancel {
+            background: #ededed;
+            color: #444;
+        }
+        .modal button.cancel:hover {
+            background: #e0e0e0;
+        }
+        .modal .close-x, .alert-modal .close-x {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            font-size: 22px;
+            color: #888;
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: color 0.18s;
+            z-index: 2;
+        }
+        .modal .close-x:hover, .alert-modal .close-x:hover {
+            color: #1976d2;
+        }
+        .alert-modal .alert-message {
+            text-align: center;
+            font-size: 1.08em;
+            color: #222;
+            margin: 10px 0 0 0;
+        }
     </style>
 </head>
 <body>
 <div id="map"></div>
-<!-- Leaflet JS -->
+<!-- Модальное окно -->
+<div id="modal-bg" class="modal-bg" style="display:none;">
+    <form class="modal" id="mark-form">
+        <button type="button" class="close-x" id="close-x" title="Закрыть">×</button>
+        <h2 id="modal-title">Добавить метку</h2>
+        <label for="comment" id="comment-label">Комментарий об этом месте:</label>
+        <textarea id="comment" required maxlength="200" placeholder="Что интересного или важного здесь?"></textarea>
+        <div id="stars-block">
+            <label>Оценка:</label>
+            <div class="stars" id="stars">
+                <span class="star" data-value="1"><span class="star-tooltip">Плохо</span>★</span>
+                <span class="star" data-value="2"><span class="star-tooltip">Слабо</span>★</span>
+                <span class="star" data-value="3"><span class="star-tooltip">Нормально</span>★</span>
+                <span class="star" data-value="4"><span class="star-tooltip">Хорошо</span>★</span>
+                <span class="star" data-value="5"><span class="star-tooltip">Отлично</span>★</span>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="cancel" id="cancel-btn">Отмена</button>
+            <button type="submit" class="save" id="save-btn" disabled>Сохранить</button>
+        </div>
+    </form>
+    <!-- Кастомное окно предупреждения -->
+    <div class="alert-modal" id="alert-modal" style="display:none;">
+        <button type="button" class="close-x" id="alert-close-x" title="Закрыть">×</button>
+        <h2>Внимание</h2>
+        <div class="alert-message">Отзывы можно оставлять только на территории России</div>
+        <div class="alert-actions">
+            <button type="button" class="save" id="alert-ok-btn">Ок</button>
+        </div>
+    </div>
+</div>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-    // Получаем город из query-параметра
     function getCityFromQuery() {
         const params = new URLSearchParams(window.location.search);
         return params.get('city') || 'Москва';
     }
 
-    // Геокодинг через Nominatim (OpenStreetMap)
     function geocodeCity(city, callback) {
         fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city + ', Россия')}`)
             .then(response => response.json())
@@ -35,19 +227,207 @@
                 if (data && data.length > 0) {
                     callback([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
                 } else {
-                    // fallback: Москва
-                    callback([55.751244, 37.618423]);
+                    callback([55.751244, 37.618423]); // fallback: Москва
                 }
             });
     }
 
+    // Проверка: точка в России?
+    function isInRussia(lat, lon, callback) {
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=5&addressdetails=1`)
+            .then(r => r.json())
+            .then(data => {
+                const country = data.address && data.address.country;
+                callback(country === 'Россия');
+            })
+            .catch(() => callback(false));
+    }
+
+    // Кастомное предупреждение
+    const alertModal = document.getElementById('alert-modal');
+    const alertOkBtn = document.getElementById('alert-ok-btn');
+    const alertCloseX = document.getElementById('alert-close-x');
+    function showAlertModal() {
+        document.getElementById('modal-bg').style.display = 'flex';
+        alertModal.style.display = 'flex';
+    }
+    function closeAlertModal() {
+        alertModal.style.display = 'none';
+        document.getElementById('modal-bg').style.display = 'none';
+    }
+    alertOkBtn.onclick = closeAlertModal;
+    alertCloseX.onclick = closeAlertModal;
+
+    // Храним метки и комментарии в памяти (frontend)
+    let marks = [];
+    let map, lastLatLng = null, commentTargetMark = null, isCommentMode = false;
+
+    function formatTime(date) {
+        return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderStars(rating) {
+        let html = '';
+        for (let i = 1; i <= 5; i++) {
+            html += `<span style=\"color:${i <= rating ? '#FFD600' : '#ccc'};font-size:22px;\">★</span>`;
+        }
+        return html;
+    }
+
+    function renderMarks(map) {
+        if (window._leafletMarks) {
+            window._leafletMarks.forEach(m => map.removeLayer(m));
+        }
+        window._leafletMarks = [];
+        const now = Date.now();
+        marks = marks.filter(mark => now - mark.timestamp < 2 * 60 * 60 * 1000); // только свежие (2 часа)
+        marks.forEach((mark, idx) => {
+            const marker = L.marker(mark.latlng).addTo(map);
+            const minutesAgo = Math.floor((now - mark.timestamp) / 60000);
+            let timeAgo = '';
+            if (minutesAgo < 1) timeAgo = 'только что';
+            else if (minutesAgo < 60) timeAgo = `${minutesAgo} мин назад`;
+            else timeAgo = `${Math.floor(minutesAgo/60)} ч ${minutesAgo%60} мин назад`;
+            let commentsHtml = '';
+            if (mark.comments && mark.comments.length > 0) {
+                commentsHtml = '<hr style="margin:8px 0 4px 0;">';
+                commentsHtml += '<b>Комментарии:</b><br>' + mark.comments.map(c => `<div style='margin-bottom:4px;'><span style='color:#1976d2;'>${c.text}</span> <span style='color:#FFD600;'>${renderStars(c.rating)}</span> <span style='color:#888;font-size:12px;'>${formatTime(new Date(c.timestamp))}</span></div>`).join('');
+            }
+            const popupContent =
+                `<b>Комментарий:</b> ${mark.comment}<br>` +
+                `<b>Оценка:</b> ${renderStars(mark.rating)}<br>` +
+                `<small>Поставлено: ${formatTime(new Date(mark.timestamp))} (${timeAgo})</small>` +
+                commentsHtml +
+                `<div style='margin-top:8px;text-align:right;'><button onclick='window.openCommentForm(${idx});return false;' style='background:#1976d2;color:#fff;border:none;border-radius:7px;padding:4px 12px;font-size:14px;cursor:pointer;'>Добавить комментарий</button></div>`;
+            marker.bindPopup(popupContent, {maxWidth: 320});
+            window._leafletMarks.push(marker);
+        });
+    }
+
+    // Модалка
+    const modalBg = document.getElementById('modal-bg');
+    const markForm = document.getElementById('mark-form');
+    const commentInput = document.getElementById('comment');
+    const starsDiv = document.getElementById('stars');
+    const saveBtn = document.getElementById('save-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    const closeX = document.getElementById('close-x');
+    const modalTitle = document.getElementById('modal-title');
+    const commentLabel = document.getElementById('comment-label');
+    const starsBlock = document.getElementById('stars-block');
+    let selectedRating = 0;
+
+    function openModal(latlng) {
+        isCommentMode = false;
+        lastLatLng = latlng;
+        commentInput.value = '';
+        selectedRating = 0;
+        updateStars(0);
+        saveBtn.disabled = true;
+        modalBg.style.display = 'flex';
+        modalTitle.textContent = 'Добавить метку';
+        commentLabel.textContent = 'Комментарий об этом месте:';
+        starsBlock.style.display = '';
+        markForm.style.display = '';
+        alertModal.style.display = 'none';
+        commentInput.focus();
+    }
+    function openCommentModal(markIdx) {
+        isCommentMode = true;
+        commentTargetMark = markIdx;
+        commentInput.value = '';
+        selectedRating = 0;
+        updateStars(0);
+        saveBtn.disabled = true;
+        modalBg.style.display = 'flex';
+        modalTitle.textContent = 'Добавить комментарий';
+        commentLabel.textContent = 'Комментарий:';
+        starsBlock.style.display = '';
+        markForm.style.display = '';
+        alertModal.style.display = 'none';
+        commentInput.focus();
+    }
+    window.openCommentForm = openCommentModal;
+    function closeModal() {
+        modalBg.style.display = 'none';
+    }
+    function updateStars(rating) {
+        Array.from(starsDiv.children).forEach((star, i) => {
+            star.classList.toggle('selected', i < rating);
+        });
+    }
+    starsDiv.addEventListener('mousemove', e => {
+        if (e.target.classList.contains('star')) {
+            const val = parseInt(e.target.dataset.value);
+            updateStars(val);
+        }
+    });
+    starsDiv.addEventListener('mouseleave', () => updateStars(selectedRating));
+    starsDiv.addEventListener('click', e => {
+        if (e.target.classList.contains('star')) {
+            selectedRating = parseInt(e.target.dataset.value);
+            updateStars(selectedRating);
+            saveBtn.disabled = !commentInput.value.trim() || !selectedRating;
+        }
+    });
+    commentInput.addEventListener('input', () => {
+        saveBtn.disabled = !commentInput.value.trim() || !selectedRating;
+    });
+    cancelBtn.addEventListener('click', e => {
+        e.preventDefault();
+        closeModal();
+    });
+    closeX.addEventListener('click', e => {
+        e.preventDefault();
+        closeModal();
+    });
+    markForm.addEventListener('submit', e => {
+        e.preventDefault();
+        if (!commentInput.value.trim() || !selectedRating) return;
+        if (isCommentMode && commentTargetMark !== null) {
+            if (!marks[commentTargetMark].comments) marks[commentTargetMark].comments = [];
+            marks[commentTargetMark].comments.push({
+                text: commentInput.value.trim(),
+                rating: selectedRating,
+                timestamp: Date.now()
+            });
+        } else {
+            marks.push({
+                latlng: lastLatLng,
+                comment: commentInput.value.trim(),
+                rating: selectedRating,
+                timestamp: Date.now(),
+                comments: []
+            });
+        }
+        closeModal();
+        renderMarks(map);
+    });
+
     const city = getCityFromQuery();
     geocodeCity(city, function(coords) {
-        var map = L.map('map').setView(coords, 11);
+        map = L.map('map', {
+            center: coords,
+            zoom: 11
+        });
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '© OpenStreetMap'
         }).addTo(map);
+
+        map.on('click', function(e) {
+            isInRussia(e.latlng.lat, e.latlng.lng, function(isRu) {
+                if (isRu) {
+                    openModal(e.latlng);
+                } else {
+                    markForm.style.display = 'none';
+                    showAlertModal();
+                }
+            });
+        });
+
+        renderMarks(map);
+        setInterval(() => renderMarks(map), 60 * 1000);
     });
 </script>
 </body>
