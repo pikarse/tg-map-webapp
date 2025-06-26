@@ -263,6 +263,8 @@
 </div>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
+    const API_URL = "http://127.0.0.1:8000";
+
     function getCityFromQuery() {
         const params = new URLSearchParams(window.location.search);
         return params.get('city') || 'Москва';
@@ -318,9 +320,38 @@
     alertOkBtn.onclick = closeAlertModal;
     alertCloseX.onclick = closeAlertModal;
 
-    // Храним метки и комментарии в памяти (frontend)
+    // Загрузка меток с сервера
+    function loadMarks(city, callback) {
+        fetch(`${API_URL}/marks?city=${encodeURIComponent(city)}`)
+            .then(r => r.json())
+            .then(data => callback(data));
+    }
+
+    // Добавление метки на сервер
+    function addMarkToServer(mark, callback) {
+        fetch(`${API_URL}/marks`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(mark)
+        })
+        .then(r => r.json())
+        .then(data => callback(data));
+    }
+
+    // Добавление комментария на сервер
+    function addCommentToServer(comment, callback) {
+        fetch(`${API_URL}/comments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(comment)
+        })
+        .then(r => r.json())
+        .then(data => callback(data));
+    }
+
     let marks = [];
     let map, lastLatLng = null, commentTargetMark = null, isCommentMode = false;
+    let currentCity = null;
 
     function formatTime(date) {
         return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -340,20 +371,15 @@
         }
         window._leafletMarks = [];
         const now = Date.now();
-        marks = marks.filter(mark => now - mark.timestamp < 2 * 60 * 60 * 1000); // только свежие (2 часа)
+        marks = marks.filter(mark => now / 1000 - mark.timestamp < 2 * 60 * 60); // только свежие (2 часа)
         marks.forEach((mark, idx) => {
-            const marker = L.marker(mark.latlng).addTo(map);
-            const minutesAgo = Math.floor((now - mark.timestamp) / 60000);
-            let timeAgo = '';
-            if (minutesAgo < 1) timeAgo = 'только что';
-            else if (minutesAgo < 60) timeAgo = `${minutesAgo} мин назад`;
-            else timeAgo = `${Math.floor(minutesAgo/60)} ч ${minutesAgo%60} мин назад`;
+            const marker = L.marker([mark.lat, mark.lng]).addTo(map);
             let commentsHtml = '';
             const allComments = [{
                 text: mark.comment,
                 rating: mark.rating,
-                timestamp: mark.timestamp
-            }].concat(mark.comments || []);
+                timestamp: mark.timestamp * 1000 // сервер хранит в секундах
+            }].concat((mark.comments || []).map(c => ({...c, timestamp: c.timestamp * 1000})));
             if (allComments.length > 0) {
                 commentsHtml = '<div style="margin-top:10px;"><b>Комментарии:</b>' + allComments.map((c, i) =>
                     `<div class='comment'>
@@ -371,7 +397,7 @@
             }
             const popupContent =
                 commentsHtml +
-                `<div style='margin-top:8px;text-align:right;'><button onclick='window.openCommentForm(${idx});return false;' style='background:#1976d2;color:#fff;border:none;border-radius:7px;padding:4px 12px;font-size:14px;cursor:pointer;'>Добавить комментарий</button></div>`;
+                `<div style='margin-top:8px;text-align:right;'><button onclick='window.openCommentForm(${mark.id});return false;' style='background:#1976d2;color:#fff;border:none;border-radius:7px;padding:4px 12px;font-size:14px;cursor:pointer;'>Добавить комментарий</button></div>`;
             marker.bindPopup(popupContent, {maxWidth: 320});
             window._leafletMarks.push(marker);
         });
@@ -458,26 +484,38 @@
         e.preventDefault();
         if (!commentInput.value.trim() || !selectedRating) return;
         if (isCommentMode && commentTargetMark !== null) {
-            if (!marks[commentTargetMark].comments) marks[commentTargetMark].comments = [];
-            marks[commentTargetMark].comments.push({
+            addCommentToServer({
+                mark_id: commentTargetMark,
                 text: commentInput.value.trim(),
-                rating: selectedRating,
-                timestamp: Date.now()
+                rating: selectedRating
+            }, function() {
+                closeModal();
+                refreshMarks();
             });
         } else {
-            marks.push({
-                latlng: lastLatLng,
+            addMarkToServer({
+                lat: lastLatLng.lat,
+                lng: lastLatLng.lng,
                 comment: commentInput.value.trim(),
                 rating: selectedRating,
-                timestamp: Date.now(),
-                comments: []
+                city: currentCity
+            }, function() {
+                closeModal();
+                refreshMarks();
             });
         }
-        closeModal();
-        renderMarks(map);
     });
 
+    function refreshMarks() {
+        if (!currentCity) return;
+        loadMarks(currentCity, function(data) {
+            marks = data;
+            renderMarks(map);
+        });
+    }
+
     const city = getCityFromQuery();
+    currentCity = city;
     geocodeCity(city, function(coords) {
         map = L.map('map', {
             center: coords,
@@ -499,8 +537,9 @@
             });
         });
 
-        renderMarks(map);
-        setInterval(() => renderMarks(map), 60 * 1000);
+        // Загружаем метки с сервера при старте
+        refreshMarks();
+        setInterval(refreshMarks, 60 * 1000);
     });
 </script>
 </body>
